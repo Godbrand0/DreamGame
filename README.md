@@ -1,470 +1,439 @@
-# OneChain Wallet Integration Guide
+# 🎮 Alien Invaders GameFi - OneChain Play-to-Earn Platform
 
-This guide provides comprehensive instructions on how to integrate your Next.js and Tailwind CSS frontend with the OneChain wallet ecosystem.
+A decentralized play-to-earn Space Invaders game built on OneChain where players stake OCT tokens to play and earn rewards based on their performance.
 
-## Overview
+## 📋 Overview
 
-OneChain provides a robust wallet infrastructure that allows web applications to interact with the OneChain blockchain. This integration enables users to connect their wallets, sign transactions, manage assets, and interact with smart contracts directly from your web application.
+**Alien Invaders GameFi** combines classic arcade gameplay with blockchain economics. Players stake OCT tokens to enter games, compete for high scores, and earn rewards from a shared prize pool. The better you play, the more you earn!
 
-## Prerequisites
+### Key Features
 
-- Node.js 18+ installed
-- Next.js project set up with Tailwind CSS
-- Basic understanding of React hooks and state management
-- OneChain wallet browser extension installed (for testing)
+- 🎮 **Classic Space Invaders Gameplay**: Nostalgic arcade action
+- 💰 **Stake-to-Play**: Stake OCT tokens to enter games
+- 🏆 **Score-Based Rewards**: Higher scores = bigger rewards
+- 🎯 **Prize Pool System**: Community-funded reward distribution
+- 🔒 **Blockchain Verified**: All scores and rewards on-chain
+- ⚡ **Instant Payouts**: Claim rewards immediately after games
 
-## Installation
+### Game Economics
 
-### Required Packages
+| Stake Amount | Entry Fee | Potential Reward Multiplier |
+|--------------|-----------|----------------------------|
+| 10 OCT       | 1 OCT     | Up to 5x (50 OCT max)     |
+| 50 OCT       | 5 OCT     | Up to 10x (500 OCT max)   |
+| 100 OCT      | 10 OCT    | Up to 20x (2000 OCT max)  |
 
-Install the OneChain SDK and related dependencies:
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    GAME INTERFACE (Next.js)                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │   Staking    │  │  Game Canvas │  │  Leaderboard │      │
+│  │   Section    │  │   + Controls │  │   + Rewards  │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+└────────────────────────────┬────────────────────────────────┘
+                             │ OneWallet SDK
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   ONECHAIN BLOCKCHAIN                        │
+│                      (Move Runtime)                          │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │          GAMEFI SMART CONTRACT (Move)                │  │
+│  │  • Prize Pool (Community-funded OCT)                 │  │
+│  │  • Player Stakes (Individual game entries)           │  │
+│  │  • Score Verification & Reward Distribution          │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 🎮 How to Play
+
+1. **Connect Wallet**: Connect your OneWallet
+2. **Stake OCT**: Choose stake amount and enter game
+3. **Play**: Destroy aliens, avoid bullets, protect barriers
+4. **Earn Rewards**: Higher scores earn bigger rewards
+5. **Claim**: Withdraw your stake + rewards
+
+### Scoring System
+
+- **Small Alien (Octopus)**: 10 points
+- **Medium Alien (Crab)**: 20 points  
+- **Large Alien (Squid)**: 30 points
+- **Bonus**: Survival time multiplier
+
+### Reward Calculation
+
+```
+Base Reward = Stake Amount
+Score Multiplier = (Your Score / Average Score) * Difficulty Modifier
+Final Reward = Base Reward * Score Multiplier (capped at max multiplier)
+```
+
+## 📁 Project Structure
+
+```
+alien-invaders-gamefi/
+│
+├── move/                           # Smart Contract
+│   ├── sources/
+│   │   └── GameFi.move            # Main game contract
+│   ├── tests/
+│   │   └── gamefi_tests.move      # Contract tests
+│   └── Move.toml                   # Move configuration
+│
+├── frontend/                       # Next.js Game Application
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx
+│   │   │   ├── providers.tsx
+│   │   │   └── globals.css
+│   │   ├── components/
+│   │   │   ├── WalletConnect.tsx
+│   │   │   ├── StakeSection.tsx
+│   │   │   ├── GameCanvas.tsx
+│   │   │   ├── Leaderboard.tsx
+│   │   │   └── RewardClaim.tsx
+│   │   ├── game/
+│   │   │   ├── Game.ts
+│   │   │   ├── Player.ts
+│   │   │   ├── Alien.ts
+│   │   │   ├── Bullet.ts
+│   │   │   └── Barrier.ts
+│   │   └── lib/
+│   │       ├── formatters.ts
+│   │       ├── contractAbi.ts
+│   │       └── gameLogic.ts
+│   ├── package.json
+│   ├── next.config.js
+│   └── tailwind.config.js
+│
+├── docs/
+│   ├── GAMEPLAY.md
+│   └── TOKENOMICS.md
+│
+├── .gitignore
+├── README.md
+└── LICENSE
+```
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+**For Smart Contract:**
+- OneChain CLI (Move compiler)
+- Git
+
+**For Frontend:**
+- Node.js 18+ and npm
+- OneWallet browser extension
+
+### Installation
+
+#### 1. Clone Repository
 
 ```bash
-npm install @onechain/wallet-sdk @onechain/client
-npm install @onechain/react-hooks
+git clone https://github.com/YOUR_USERNAME/alien-invaders-gamefi
+cd alien-invaders-gamefi
 ```
 
-### TypeScript Support
-
-For TypeScript projects, install the type definitions:
+#### 2. Smart Contract Setup
 
 ```bash
-npm install --save-dev @types/node
+cd move
+
+# Compile contract
+one move build
+
+# Run tests
+one move test
+
+# Deploy to testnet
+one move publish --profile testnet --gas-budget 50000000
+
+# Initialize prize pool
+one client ptb \
+  --move-call PACKAGE_ID::GameFi::initialize 10000000000 \
+  --gas-budget 20000000
 ```
 
-## Wallet Connection Methods
-
-### 1. OneChain Browser Extension
-
-The most common method is connecting through the OneChain browser extension.
-
-#### Detection and Connection
-
-```typescript
-// Check if OneChain extension is installed
-const isOneChainInstalled = () => {
-  return typeof window !== 'undefined' && window.onechain;
-};
-
-// Connect to wallet
-const connectWallet = async () => {
-  if (!isOneChainInstalled()) {
-    throw new Error('OneChain extension not installed');
-  }
-  
-  try {
-    const accounts = await window.onechain.request({
-      method: 'one_requestAccounts',
-    });
-    return accounts[0]; // Return first connected account
-  } catch (error) {
-    console.error('Failed to connect wallet:', error);
-    throw error;
-  }
-};
-```
-
-### 2. Mobile Wallet Integration
-
-For mobile users, integrate with deep linking:
-
-```typescript
-const connectMobileWallet = () => {
-  const deepLink = 'onechain://dapp/connect?dappUrl=' + encodeURIComponent(window.location.href);
-  window.location.href = deepLink;
-};
-```
-
-## React Integration
-
-### Wallet Provider Setup
-
-Create a wallet context to manage wallet state across your application:
-
-```typescript
-// contexts/WalletContext.tsx
-import React, { createContext, useContext, useState, useEffect } from 'react';
-
-interface WalletContextType {
-  isConnected: boolean;
-  address: string | null;
-  connect: () => Promise<void>;
-  disconnect: () => void;
-  signTransaction: (transaction: any) => Promise<string>;
-}
-
-const WalletContext = createContext<WalletContextType | null>(null);
-
-export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isConnected, setIsConnected] = useState(false);
-  const [address, setAddress] = useState<string | null>(null);
-
-  // Implementation details...
-};
-```
-
-### Custom Hook for Wallet Operations
-
-```typescript
-// hooks/useWallet.ts
-import { useContext } from 'react';
-import { WalletContext } from '../contexts/WalletContext';
-
-export const useWallet = () => {
-  const context = useContext(WalletContext);
-  if (!context) {
-    throw new Error('useWallet must be used within WalletProvider');
-  }
-  return context;
-};
-```
-
-## Transaction Handling
-
-### Sending Transactions
-
-```typescript
-const sendTransaction = async (recipient: string, amount: string) => {
-  try {
-    const transaction = {
-      type: 'transfer',
-      recipient,
-      amount,
-      currency: 'OCT',
-    };
-
-    const signedTx = await window.onechain.request({
-      method: 'one_signTransaction',
-      params: [transaction],
-    });
-
-    const result = await window.onechain.request({
-      method: 'one_sendTransaction',
-      params: [signedTx],
-    });
-
-    return result;
-  } catch (error) {
-    console.error('Transaction failed:', error);
-    throw error;
-  }
-};
-```
-
-### Smart Contract Interaction
-
-```typescript
-const callSmartContract = async (contractAddress: string, functionName: string, args: any[]) => {
-  try {
-    const callData = {
-      contractAddress,
-      functionName,
-      args,
-    };
-
-    const result = await window.onechain.request({
-      method: 'one_callContract',
-      params: [callData],
-    });
-
-    return result;
-  } catch (error) {
-    console.error('Contract call failed:', error);
-    throw error;
-  }
-};
-```
-
-## UI Components with Tailwind CSS
-
-### Connect Wallet Button
-
-```typescript
-// components/ConnectWalletButton.tsx
-import React from 'react';
-import { useWallet } from '../hooks/useWallet';
-
-export const ConnectWalletButton: React.FC = () => {
-  const { isConnected, address, connect, disconnect } = useWallet();
-
-  if (isConnected) {
-    return (
-      <div className="flex items-center space-x-4">
-        <span className="text-sm text-gray-600">
-          {address?.slice(0, 6)}...{address?.slice(-4)}
-        </span>
-        <button
-          onClick={disconnect}
-          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-        >
-          Disconnect
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <button
-      onClick={connect}
-      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-    >
-      Connect Wallet
-    </button>
-  );
-};
-```
-
-### Transaction Status Component
-
-```typescript
-// components/TransactionStatus.tsx
-import React from 'react';
-
-interface TransactionStatusProps {
-  status: 'pending' | 'success' | 'error';
-  message?: string;
-  txHash?: string;
-}
-
-export const TransactionStatus: React.FC<TransactionStatusProps> = ({ 
-  status, 
-  message, 
-  txHash 
-}) => {
-  const getStatusColor = () => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'success': return 'bg-green-100 text-green-800';
-      case 'error': return 'bg-red-100 text-red-800';
-    }
-  };
-
-  const getStatusIcon = () => {
-    switch (status) {
-      case 'pending': return '⏳';
-      case 'success': return '✅';
-      case 'error': return '❌';
-    }
-  };
-
-  return (
-    <div className={`p-4 rounded-lg ${getStatusColor()}`}>
-      <div className="flex items-center space-x-2">
-        <span className="text-lg">{getStatusIcon()}</span>
-        <span className="font-medium">{message}</span>
-      </div>
-      {txHash && (
-        <div className="mt-2 text-sm">
-          <span>Transaction: </span>
-          <a 
-            href={`https://explorer.onechain.cc/tx/${txHash}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:no-underline"
-          >
-            {txHash.slice(0, 10)}...{txHash.slice(-8)}
-          </a>
-        </div>
-      )}
-    </div>
-  );
-};
-```
-
-## Network Configuration
-
-### Environment Setup
-
-Configure your application for different OneChain networks:
-
-```typescript
-// config/networks.ts
-export const NETWORKS = {
-  mainnet: {
-    name: 'Mainnet',
-    rpcUrl: 'https://rpc-mainnet.onelabs.cc:443',
-    chainId: 'onechain-mainnet',
-  },
-  testnet: {
-    name: 'Testnet',
-    rpcUrl: 'https://rpc-testnet.onelabs.cc:443',
-    chainId: 'onechain-testnet',
-  },
-  devnet: {
-    name: 'Devnet',
-    rpcUrl: 'https://rpc-devnet.onelabs.cc:443',
-    chainId: 'onechain-devnet',
-  },
-};
-```
-
-### Network Switching
-
-```typescript
-const switchNetwork = async (networkName: string) => {
-  try {
-    await window.onechain.request({
-      method: 'one_switchNetwork',
-      params: [{ chainId: NETWORKS[networkName].chainId }],
-    });
-  } catch (error) {
-    console.error('Failed to switch network:', error);
-    throw error;
-  }
-};
-```
-
-## Error Handling
-
-### Common Error Scenarios
-
-```typescript
-// utils/walletErrors.ts
-export const handleWalletError = (error: any) => {
-  if (error.code === 4001) {
-    // User rejected the request
-    return 'Transaction rejected by user';
-  } else if (error.code === -32603) {
-    // Internal error
-    return 'Wallet internal error. Please try again.';
-  } else if (error.message?.includes('not installed')) {
-    return 'OneChain wallet not installed. Please install the extension.';
-  }
-  return error.message || 'Unknown wallet error occurred';
-};
-```
-
-## Security Best Practices
-
-### 1. Validate Transactions
-
-Always validate transaction data before sending:
-
-```typescript
-const validateTransaction = (tx: any) => {
-  if (!tx.recipient || !tx.amount) {
-    throw new Error('Invalid transaction data');
-  }
-  
-  if (parseFloat(tx.amount) <= 0) {
-    throw new Error('Amount must be positive');
-  }
-  
-  // Add more validation as needed
-};
-```
-
-### 2. Secure Storage
-
-Never store private keys or sensitive data in localStorage:
-
-```typescript
-// Use secure storage for non-sensitive data only
-const storeWalletPreferences = (preferences: any) => {
-  sessionStorage.setItem('walletPrefs', JSON.stringify(preferences));
-};
-```
-
-### 3. Input Sanitization
-
-Sanitize all user inputs before processing:
-
-```typescript
-const sanitizeAddress = (address: string) => {
-  if (!address.startsWith('0x') || address.length !== 66) {
-    throw new Error('Invalid address format');
-  }
-  return address;
-};
-```
-
-## Testing
-
-### Mock Wallet for Testing
-
-Create a mock wallet for development and testing:
-
-```typescript
-// utils/mockWallet.ts
-export const mockWallet = {
-  request: async ({ method, params }: any) => {
-    switch (method) {
-      case 'one_requestAccounts':
-        return ['0x1234567890123456789012345678901234567890'];
-      case 'one_signTransaction':
-        return '0xsignedtransaction';
-      default:
-        throw new Error('Method not supported in mock');
-    }
-  },
-};
-```
-
-## Deployment Considerations
-
-### 1. Environment Variables
-
-Configure environment-specific settings:
+#### 3. Frontend Setup
 
 ```bash
-# .env.local
-NEXT_PUBLIC_ONECHAIN_NETWORK=testnet
-NEXT_PUBLIC_RPC_URL=https://rpc-testnet.onelabs.cc:443
+cd frontend
+
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your contract details
+
+# Start development server
+npm run dev
 ```
 
-### 2. Bundle Optimization
+Visit `http://localhost:3000` to play!
 
-Optimize your bundle for wallet integration:
+## 📦 Dependencies
 
-```javascript
-// next.config.js
-module.exports = {
-  webpack: (config) => {
-    config.externals = {
-      ...config.externals,
-      'onechain': 'window.onechain',
-    };
-    return config;
-  },
-};
+### Smart Contract (Move)
+
+```toml
+[dependencies]
+One = { git = "https://github.com/one-chain-labs/onechain.git", subdir = "crates/sui-framework/packages/one-framework", rev = "main" }
 ```
 
-## Troubleshooting
+### Frontend (Next.js)
 
-### Common Issues
-
-1. **Extension Not Detected**: Ensure users have the OneChain extension installed
-2. **Connection Timeouts**: Implement proper timeout handling
-3. **Network Mismatches**: Verify network configuration matches wallet settings
-4. **Transaction Failures**: Check gas limits and account balances
-
-### Debug Tools
-
-Use browser developer tools to debug wallet interactions:
-
-```typescript
-// Enable debug mode
-if (process.env.NODE_ENV === 'development') {
-  window.onechain?.on('debug', (event) => {
-    console.log('OneChain Debug:', event);
-  });
-}
+**Core:**
+```bash
+npm install next@^14.1.0 react@^18.2.0 react-dom@^18.2.0
+npm install typescript@^5.3.3
 ```
 
-## Resources
+**OneChain Integration:**
+```bash
+npm install @mysten/sui.js@^0.50.1
+npm install @mysten/dapp-kit@^0.11.7
+npm install @mysten/wallet-standard@^0.10.3
+npm install @tanstack/react-query@^5.17.19
+```
 
-- [OneChain Documentation](https://docs.onechain.cc)
-- [OneChain Explorer](https://explorer.onechain.cc)
-- [Wallet Extension Download](https://wallet.onechain.cc)
-- [Developer Discord](https://discord.gg/onechain)
+**Styling:**
+```bash
+npm install tailwindcss@^3.4.1 autoprefixer@^10.4.17 postcss@^8.4.33
+npm install lucide-react@^0.316.0
+npm install clsx@^2.1.0
+```
 
-## Support
+**Utilities:**
+```bash
+npm install date-fns@^3.3.1
+```
 
-For integration support:
-- Check the [GitHub Issues](https://github.com/one-chain-labs/onechain/issues)
-- Join the [Developer Community](https://community.onechain.cc)
-- Review the [API Reference](https://api.onechain.cc)
+## 🎯 Game Mechanics
+
+### Entry System
+1. Player selects stake amount (10, 50, or 100 OCT)
+2. Smart contract locks stake + entry fee
+3. Game session begins
+4. Score is recorded on-chain
+
+### Reward Distribution
+- **Win Condition**: Destroy all aliens
+- **Bonus Pool**: 10% of all entry fees
+- **Reward Formula**: `(Score / HighScore) * StakeAmount * Multiplier`
+- **Maximum Payout**: Based on stake tier
+
+### Anti-Cheat
+- Score verification via blockchain
+- Time-based validation
+- Pattern detection for bot prevention
+- Community reporting system
+
+## 🔐 Smart Contract Functions
+
+### Player Functions
+
+```move
+// Start a new game session
+public entry fun start_game(
+    pool: &mut GamePool,
+    stake: Coin<OCT>,
+    stake_tier: u64,
+    ctx: &mut TxContext
+)
+
+// Submit score and claim rewards
+public entry fun end_game(
+    pool: &mut GamePool,
+    session: GameSession,
+    score: u64,
+    ctx: &mut TxContext
+)
+
+// Emergency exit (forfeit rewards)
+public entry fun forfeit_game(
+    pool: &mut GamePool,
+    session: GameSession,
+    ctx: &TxContext
+)
+```
+
+### View Functions
+
+```move
+// Get pool statistics
+public fun get_pool_info(pool: &GamePool): (u64, u64, u64)
+
+// Get player session info
+public fun get_session_info(session: &GameSession): (u64, u64, bool)
+
+// Calculate potential reward
+public fun calculate_reward(stake: u64, score: u64, tier: u64): u64
+```
+
+## 📊 Tokenomics
+
+### Prize Pool Distribution
+- **70%**: Player rewards
+- **20%**: Prize pool accumulation
+- **10%**: Platform maintenance
+
+### Stake Tiers
+
+**Tier 1: Casual (10 OCT)**
+- Entry Fee: 1 OCT
+- Max Multiplier: 5x
+- Max Reward: 50 OCT
+
+**Tier 2: Competitive (50 OCT)**
+- Entry Fee: 5 OCT
+- Max Multiplier: 10x
+- Max Reward: 500 OCT
+
+**Tier 3: Pro (100 OCT)**
+- Entry Fee: 10 OCT
+- Max Multiplier: 20x
+- Max Reward: 2000 OCT
+
+## 🏆 Leaderboard System
+
+- **Daily Rankings**: Top 10 players each day
+- **Weekly Champions**: Highest cumulative scores
+- **All-Time Records**: Permanent hall of fame
+- **Bonus Rewards**: Extra OCT for top performers
+
+## 🧪 Testing
+
+### Smart Contract Tests
+
+```bash
+cd move
+one move test
+
+# Run specific test
+one move test test_start_game
+
+# Verbose output
+one move test -v
+```
+
+### Frontend Testing
+
+```bash
+cd frontend
+npm run test
+npm run test:e2e
+```
+
+## 🔧 Development
+
+### Local Development
+
+```bash
+# Terminal 1: Run local OneChain node (if available)
+one start --network local
+
+# Terminal 2: Deploy contract
+cd move && one move publish --profile local
+
+# Terminal 3: Run frontend
+cd frontend && npm run dev
+```
+
+### Environment Variables
+
+```env
+NEXT_PUBLIC_PACKAGE_ID=0x...
+NEXT_PUBLIC_NETWORK=testnet
+NEXT_PUBLIC_ONECHAIN_RPC=https://rpc.testnet.onechain.network
+NEXT_PUBLIC_MIN_STAKE=10000000
+NEXT_PUBLIC_MAX_STAKE=100000000
+```
+
+## 🗺️ Roadmap
+
+### ✅ Phase 1: MVP (Current)
+- Basic Space Invaders gameplay
+- Stake-to-play mechanism
+- Simple reward distribution
+- Leaderboard system
+
+### 🔄 Phase 2: Enhanced Gaming (Q1 2026)
+- Multiple difficulty levels
+- Power-ups and special weapons
+- Tournament mode
+- Team battles
+
+### 📅 Phase 3: Social Features (Q2 2026)
+- Friend challenges
+- Guild system
+- Spectator mode
+- Live streaming integration
+
+### 🚀 Phase 4: Ecosystem Expansion (Q3 2026)
+- NFT aliens (collectibles)
+- Seasonal events
+- Cross-game rewards
+- Mobile app
+
+## 🎨 Game Controls
+
+- **Arrow Left/Right**: Move player
+- **Spacebar**: Shoot
+- **P**: Pause game
+- **R**: Restart (after game over)
+
+## 📚 Resources
+
+- **OneChain Official**: https://onelabs.cc/
+- **Telegram Community**: https://t.me/hello_onechain
+- **GitHub**: https://github.com/one-chain-labs
+- **Move Language**: https://move-language.github.io/move/
+- **Game Design Doc**: [docs/GAMEPLAY.md](docs/GAMEPLAY.md)
+- **Tokenomics**: [docs/TOKENOMICS.md](docs/TOKENOMICS.md)
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our contributing guidelines:
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'feat: add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file
+
+## 👥 Team
+
+**[Your Name]** - Full Stack Blockchain Game Developer
+- Smart Contract Development (Move)
+- Game Development (TypeScript)
+- OneChain Integration
+
+## 🎉 Acknowledgments
+
+- OneChain team for blockchain infrastructure
+- OneHack organizers
+- Space Invaders (Taito, 1978) for inspiration
+- Move language community
+
+## 📞 Contact
+
+- **Telegram**: @your_handle
+- **Email**: your.email@example.com
+- **Twitter**: @your_twitter
+- **Discord**: YourName#1234
 
 ---
 
-This guide provides a comprehensive foundation for integrating OneChain wallet functionality into your Next.js and Tailwind CSS application. For more advanced use cases and specific implementation details, refer to the official OneChain documentation.
+**🎮 Play. Stake. Earn. Repeat. 🚀**
+
+**Built with ❤️ on OneChain for OneHack**
