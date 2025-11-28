@@ -5,7 +5,14 @@ import { Game } from '@/lib/game/Game'
 import { Gamepad2, Trophy, Clock, Coins } from 'lucide-react'
 import { formatOCT, MAX_LEVELS, REWARD_PER_LEVEL } from '@/lib/contractAbi'
 import WalletConnect from '@/components/WalletConnect'
-import { useCurrentAccount } from '@mysten/dapp-kit'
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit'
+import { 
+  buildStartGameTx, 
+  buildCompleteLevelTx, 
+  buildClaimRewardsTx,
+  extractSessionIdFromTransaction,
+  formatContractError 
+} from '@/lib/contract'
 
 export default function GamePage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -16,8 +23,13 @@ export default function GamePage() {
   const [timeRemaining, setTimeRemaining] = useState(60)
   const [totalEarned, setTotalEarned] = useState(0)
   const [hasActiveSession, setHasActiveSession] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   
   const currentAccount = useCurrentAccount()
+  const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction()
+  const suiClient = useSuiClient()
 
   useEffect(() => {
     return () => {
@@ -30,80 +42,148 @@ export default function GamePage() {
   const startGame = async () => {
     if (!canvasRef.current) return
     if (!currentAccount) {
-      alert('Please connect your wallet first!')
+      setErrorMessage('Please connect your wallet first!')
       return
     }
 
-    // TODO: Call smart contract to start game session
-    // For now, just start the game
-    setHasActiveSession(true)
-    setGameState('playing')
-    setCurrentLevel(1)
-    setLevelsCompleted(0)
-    setTotalEarned(0)
+    try {
+      setIsProcessing(true)
+      setErrorMessage(null)
+      
+      // Build and execute start_game transaction
+      const tx = buildStartGameTx()
+      
+      const result = await signAndExecuteTransaction({
+        transaction: tx,
+      })
+      
+      console.log('Start game result:', result)
+      
+      // Extract session ID from transaction events
+      const newSessionId = await extractSessionIdFromTransaction(suiClient, result.digest)
+      
+      if (!newSessionId) {
+        throw new Error('Failed to extract session ID from transaction')
+      }
+      
+      console.log('Session ID:', newSessionId)
+      setSessionId(newSessionId)
+      setHasActiveSession(true)
+      setGameState('playing')
+      setCurrentLevel(1)
+      setLevelsCompleted(0)
+      setTotalEarned(0)
 
-    const game = new Game(
-      canvasRef.current,
-      {
-        onLevelComplete: (level) => {
-          console.log(`Level ${level} complete!`)
-          setLevelsCompleted(level)
-          setTotalEarned(level * REWARD_PER_LEVEL)
-          
-          if (level >= MAX_LEVELS) {
-            setGameState('victory')
-          } else {
-            setGameState('levelComplete')
-          }
+      const game = new Game(
+        canvasRef.current,
+        {
+          onLevelComplete: (level) => {
+            console.log(`Level ${level} complete!`)
+            setLevelsCompleted(level)
+            setTotalEarned(level * REWARD_PER_LEVEL)
+            
+            if (level >= MAX_LEVELS) {
+              setGameState('victory')
+            } else {
+              setGameState('levelComplete')
+            }
+          },
+          onGameOver: (levelsCompleted) => {
+            console.log(`Game over! Completed ${levelsCompleted} levels`)
+            setLevelsCompleted(levelsCompleted)
+            setTotalEarned(levelsCompleted * REWARD_PER_LEVEL)
+            setGameState('gameOver')
+          },
+          onTimeUpdate: (time) => {
+            setTimeRemaining(time)
+          },
         },
-        onGameOver: (levelsCompleted) => {
-          console.log(`Game over! Completed ${levelsCompleted} levels`)
-          setLevelsCompleted(levelsCompleted)
-          setTotalEarned(levelsCompleted * REWARD_PER_LEVEL)
-          setGameState('gameOver')
-        },
-        onTimeUpdate: (time) => {
-          setTimeRemaining(time)
-        },
-      },
-      currentLevel
-    )
+        currentLevel
+      )
 
-    gameRef.current = game
-    game.start()
+      gameRef.current = game
+      game.start()
+    } catch (error: any) {
+      console.error('Error starting game:', error)
+      setErrorMessage(formatContractError(error))
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const nextLevel = async () => {
-    // TODO: Sign transaction to call complete_level() on smart contract
-    // This awards 1 OCT and updates the session to next level
-    // await signAndExecuteTransaction({ ... complete_level ... })
-    
-    if (gameRef.current) {
-      const nextLevelNum = gameRef.current.getCurrentLevel() + 1
+    if (!sessionId || !gameRef.current) {
+      setErrorMessage('No active session found')
+      return
+    }
+
+    try {
+      setIsProcessing(true)
+      setErrorMessage(null)
+      
+      const completedLevel = gameRef.current.getCurrentLevel()
+      const score = gameRef.current.getScore()
+      const aliensDestroyed = completedLevel * 11 // Contract expects level * 11
+      
+      // Build and execute complete_level transaction
+      const tx = buildCompleteLevelTx(sessionId, completedLevel, score, aliensDestroyed)
+      
+      const result = await signAndExecuteTransaction({
+        transaction: tx,
+      })
+      
+      console.log('Complete level result:', result)
+      
+      // Move to next level
+      const nextLevelNum = completedLevel + 1
       setCurrentLevel(nextLevelNum)
       setGameState('playing')
       gameRef.current.nextLevel()
+    } catch (error: any) {
+      console.error('Error completing level:', error)
+      setErrorMessage(formatContractError(error))
+    } finally {
+      setIsProcessing(false)
     }
   }
 
   const claimRewards = async () => {
-    // TODO: Sign transaction to call claim_rewards() on smart contract
-    // This transfers the earned OCT to the player's wallet
-    // await signAndExecuteTransaction({ ... claim_rewards ... })
-    
-    console.log(`Claiming ${formatOCT(totalEarned)} OCT`)
-    alert(`Claimed ${formatOCT(totalEarned)} OCT! (Demo mode)`)
-    
-    // Redirect to home/menu after claiming
-    setGameState('menu')
-    setHasActiveSession(false)
-    setCurrentLevel(1)
-    setLevelsCompleted(0)
-    setTotalEarned(0)
-    
-    if (gameRef.current) {
-      gameRef.current.stop()
-      gameRef.current = null
+    if (!sessionId) {
+      setErrorMessage('No active session found')
+      return
+    }
+
+    try {
+      setIsProcessing(true)
+      setErrorMessage(null)
+      
+      // Build and execute claim_rewards transaction
+      const tx = buildClaimRewardsTx(sessionId)
+      
+      const result = await signAndExecuteTransaction({
+        transaction: tx,
+      })
+      
+      console.log('Claim rewards result:', result)
+      console.log(`Successfully claimed ${formatOCT(totalEarned)} OCT!`)
+      
+      // Reset game state
+      setGameState('menu')
+      setHasActiveSession(false)
+      setCurrentLevel(1)
+      setLevelsCompleted(0)
+      setTotalEarned(0)
+      setSessionId(null)
+      
+      if (gameRef.current) {
+        gameRef.current.stop()
+        gameRef.current = null
+      }
+    } catch (error: any) {
+      console.error('Error claiming rewards:', error)
+      setErrorMessage(formatContractError(error))
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -130,13 +210,42 @@ export default function GamePage() {
               Alien Invaders GameFi
             </h1>
             <p className="text-xl text-gray-300">
-              Play through 5 levels • Earn 1 OCT per level • 60 seconds each
+              Play through 5 levels • Earn 2 OCT per level • 60 seconds each
             </p>
           </div>
           <div className="absolute top-4 right-4">
             <WalletConnect />
           </div>
         </div>
+
+        {/* Error Message */}
+        {errorMessage && (
+          <div className="mb-6 bg-red-900/50 border-2 border-red-500 rounded-lg p-4">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <p className="text-red-200 font-semibold">Error</p>
+                <p className="text-red-100">{errorMessage}</p>
+              </div>
+              <button
+                onClick={() => setErrorMessage(null)}
+                className="ml-auto text-red-200 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Processing Indicator */}
+        {isProcessing && (
+          <div className="mb-6 bg-purple-900/50 border-2 border-purple-500 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-400"></div>
+              <p className="text-purple-200">Processing transaction... Please sign in your wallet</p>
+            </div>
+          </div>
+        )}
 
         {/* Game Stats */}
         {hasActiveSession && (
@@ -193,9 +302,10 @@ export default function GamePage() {
                 </p>
                 <button
                   onClick={startGame}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105"
+                  disabled={isProcessing}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  Start Game
+                  {isProcessing ? 'Starting...' : 'Start Game'}
                 </button>
                 <div className="mt-8 text-sm text-gray-400">
                   <p>Controls: Arrow Keys to move, Spacebar to shoot</p>
@@ -218,9 +328,10 @@ export default function GamePage() {
                 </p>
                 <button
                   onClick={nextLevel}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 shadow-lg"
+                  disabled={isProcessing}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  Continue to Level {currentLevel + 1} →
+                  {isProcessing ? 'Processing...' : `Continue to Level ${currentLevel + 1} →`}
                 </button>
                 <p className="text-sm text-gray-400 mt-4">
                   (Requires wallet signature)
@@ -246,9 +357,10 @@ export default function GamePage() {
                 </div>
                 <button
                   onClick={claimRewards}
-                  className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 shadow-lg w-full"
+                  disabled={isProcessing}
+                  className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 shadow-lg w-full disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  Claim Rewards
+                  {isProcessing ? 'Claiming...' : 'Claim Rewards'}
                 </button>
                 <p className="text-sm text-gray-400 mt-4">
                   (Requires wallet signature)

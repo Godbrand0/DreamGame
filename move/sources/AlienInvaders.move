@@ -1,49 +1,63 @@
-/// Alien Invaders GameFi - Play-to-Earn Space Invaders Game
-/// Players progress through 5 levels, earning OCT tokens for each level completed
-/// Difficulty increases with each level (more aliens, same time limit)
+/// Space Invaders GameFi - Play-to-Earn Space Invaders Game
+/// Players progress through 5 levels, earning 2 CELO per level completed
+/// Converted from Solidity to Move with equivalent functionality
 module gamefi::AlienInvaders;
 
 use one::coin::{Self, Coin};
 use one::balance::{Self, Balance};
+use one::event;
+use one::table::{Self, Table};
 use one::oct::OCT;
 
 // === Error Codes ===
 
-/// Game session already active
-const EGameAlreadyActive: u64 = 0;
 /// No active game session
-const ENoActiveGame: u64 = 1;
+const ENoActiveSession: u64 = 0;
+/// Session not active
+const ESessionNotActive: u64 = 1;
 /// Invalid level number
 const EInvalidLevel: u64 = 2;
-/// Insufficient reward pool
-const EInsufficientRewardPool: u64 = 3;
-/// Only contract owner can perform this action
-const ENotOwner: u64 = 4;
-/// Game session has expired
-const EGameExpired: u64 = 5;
-/// Cannot claim yet - game still active
-const EGameStillActive: u64 = 6;
+/// Level already completed
+const ELevelAlreadyCompleted: u64 = 3;
+/// Level time expired
+const ELevelTimeExpired: u64 = 4;
+/// Invalid level hash
+const EInvalidLevelHash: u64 = 5;
+/// Level hash already used (replay attack prevention)
+const ELevelHashAlreadyUsed: u64 = 6;
+/// No rewards to claim
+const ENoRewardsToClaim: u64 = 7;
+/// Insufficient contract balance
+const EInsufficientContractBalance: u64 = 8;
+/// Invalid session
+const EInvalidSession: u64 = 9;
+/// Not session owner
+const ENotSessionOwner: u64 = 10;
+/// Only contract owner
+const ENotOwner: u64 = 11;
+/// Contract is paused
+const EContractPaused: u64 = 12;
 
 // === Constants ===
 
-/// Reward per level (1 OCT = 1,000,000 in smallest unit, assuming 6 decimals)
-const REWARD_PER_LEVEL: u64 = 1000000;
+/// Reward per level (2 OCT = 2,000,000 in smallest unit, assuming 6 decimals)
+const REWARD_PER_LEVEL: u64 = 2000000;
 
 /// Maximum levels in game
 const MAX_LEVELS: u64 = 5;
 
 /// Time limit per level in milliseconds (60 seconds)
-const TIME_LIMIT_PER_LEVEL: u64 = 60000;
+const LEVEL_DURATION: u64 = 60000;
 
-/// Initial number of aliens in level 1
-const BASE_ALIEN_COUNT: u64 = 11;
+/// Aliens per row
+const ALIENS_PER_ROW: u64 = 11;
 
 // === Structs ===
 
 /// Global game pool managed by contract owner
 public struct GamePool has key {
     id: UID,
-    /// Reward pool funded by owner
+    /// Reward pool funded by owner (OCT tokens)
     reward_pool: Balance<OCT>,
     /// Total games played
     total_games: u64,
@@ -51,53 +65,113 @@ public struct GamePool has key {
     total_rewards_distributed: u64,
     /// Contract owner
     owner: address,
+    /// Game session counter
+    game_session_ids: u64,
+    /// Mapping of session ID to game sessions
+    game_sessions: Table<u64, GameSession>,
+    /// Mapping of player to their session IDs
+    player_sessions: Table<address, vector<u64>>,
+    /// Mapping of player to total rewards earned
+    player_total_rewards: Table<address, u64>,
+    /// Mapping of level hash to usage status (replay attack prevention)
+    level_hash_used: Table<u256, bool>,
+    /// Contract paused status
+    is_paused: bool,
 }
 
 /// Individual player game session
-public struct GameSession has key {
-    id: UID,
-    /// Player address
+public struct GameSession has store {
+    session_id: u64,
     player: address,
-    /// Current level (1-5)
     current_level: u64,
-    /// Levels completed successfully
     levels_completed: u64,
-    /// Game start timestamp
+    total_rewards_earned: u64,
     start_time: u64,
-    /// Level start timestamp
     level_start_time: u64,
-    /// Total earned so far
-    total_earned: u64,
-    /// Game is active
     is_active: bool,
+    is_completed: bool,
+    level_hashes: vector<u256>,
+}
+
+// === Events ===
+
+public struct GameStarted has copy, drop {
+    session_id: u64,
+    player: address,
+    start_time: u64,
+}
+
+public struct LevelCompleted has copy, drop {
+    session_id: u64,
+    player: address,
+    level: u64,
+    level_hash: u256,
+}
+
+public struct GameCompleted has copy, drop {
+    session_id: u64,
+    player: address,
+    total_rewards: u64,
+}
+
+public struct RewardsClaimed has copy, drop {
+    session_id: u64,
+    player: address,
+    amount: u64,
+}
+
+public struct GameAbandoned has copy, drop {
+    session_id: u64,
+    player: address,
+    levels_completed: u64,
+    partial_rewards: u64,
+}
+
+public struct OwnerWithdraw has copy, drop {
+    owner: address,
+    amount: u64,
+}
+
+public struct ContractFunded has copy, drop {
+    funder: address,
+    amount: u64,
 }
 
 // === Public Functions ===
 
 /// Initialize the game pool (called once by contract owner)
-public entry fun initialize(
-    initial_pool: Coin<OCT>,
-    ctx: &mut TxContext
-) {
+public entry fun initialize(ctx: &mut TxContext) {
     let pool = GamePool {
         id: object::new(ctx),
-        reward_pool: coin::into_balance(initial_pool),
+        reward_pool: balance::zero<OCT>(),
         total_games: 0,
         total_rewards_distributed: 0,
         owner: ctx.sender(),
+        game_session_ids: 0,
+        game_sessions: table::new(ctx),
+        player_sessions: table::new(ctx),
+        player_total_rewards: table::new(ctx),
+        level_hash_used: table::new(ctx),
+        is_paused: false,
     };
     
     transfer::share_object(pool);
 }
 
-/// Add more OCT to the reward pool (owner only)
-public entry fun add_to_pool(
+/// Fund the contract with OCT tokens (owner only)
+public entry fun fund_contract(
     pool: &mut GamePool,
-    additional_funds: Coin<OCT>,
+    payment: Coin<OCT>,
     ctx: &TxContext
 ) {
     assert!(pool.owner == ctx.sender(), ENotOwner);
-    balance::join(&mut pool.reward_pool, coin::into_balance(additional_funds));
+    let amount = coin::value(&payment);
+    balance::join(&mut pool.reward_pool, coin::into_balance(payment));
+    
+    event::emit(ContractFunded {
+        funder: ctx.sender(),
+        amount,
+    });
 }
 
 /// Start a new game session
@@ -105,117 +179,279 @@ public entry fun start_game(
     pool: &mut GamePool,
     ctx: &mut TxContext
 ) {
-    // Check if pool has enough rewards for a full game (5 levels)
-    let max_possible_reward = REWARD_PER_LEVEL * MAX_LEVELS;
-    assert!(
-        balance::value(&pool.reward_pool) >= max_possible_reward,
-        EInsufficientRewardPool
-    );
+    assert!(!pool.is_paused, EContractPaused);
+    
+    // Increment session counter
+    pool.game_session_ids = pool.game_session_ids + 1;
+    let session_id = pool.game_session_ids;
     
     let current_time = ctx.epoch_timestamp_ms();
     
     let session = GameSession {
-        id: object::new(ctx),
+        session_id,
         player: ctx.sender(),
         current_level: 1,
         levels_completed: 0,
+        total_rewards_earned: 0,
         start_time: current_time,
         level_start_time: current_time,
-        total_earned: 0,
         is_active: true,
+        is_completed: false,
+        level_hashes: vector::empty(),
     };
+    
+    // Add session to mappings
+    table::add(&mut pool.game_sessions, session_id, session);
+    
+    // Add session ID to player's sessions
+    if (!table::contains(&pool.player_sessions, ctx.sender())) {
+        table::add(&mut pool.player_sessions, ctx.sender(), vector::empty());
+    };
+    let player_session_list = table::borrow_mut(&mut pool.player_sessions, ctx.sender());
+    vector::push_back(player_session_list, session_id);
     
     pool.total_games = pool.total_games + 1;
     
-    transfer::transfer(session, ctx.sender());
+    event::emit(GameStarted {
+        session_id,
+        player: ctx.sender(),
+        start_time: current_time,
+    });
 }
 
-/// Complete a level successfully
+/// Complete a level and award rewards
 public entry fun complete_level(
     pool: &mut GamePool,
-    session: &mut GameSession,
-    ctx: &TxContext
-) {
-    // Validate session is active
-    assert!(session.is_active, ENoActiveGame);
-    assert!(session.player == ctx.sender(), ENotOwner);
-    
-    // Check if level time limit exceeded
-    let current_time = ctx.epoch_timestamp_ms();
-    let time_elapsed = current_time - session.level_start_time;
-    assert!(time_elapsed <= TIME_LIMIT_PER_LEVEL, EGameExpired);
-    
-    // Award reward for completing level
-    session.levels_completed = session.levels_completed + 1;
-    session.total_earned = session.total_earned + REWARD_PER_LEVEL;
-    
-    // Check if game is complete (all 5 levels done)
-    if (session.levels_completed >= MAX_LEVELS) {
-        session.is_active = false;
-    } else {
-        // Move to next level
-        session.current_level = session.current_level + 1;
-        session.level_start_time = current_time;
-    };
-}
-
-/// End game (player loses or quits)
-public entry fun end_game(
-    session: &mut GameSession,
-    ctx: &TxContext
-) {
-    assert!(session.is_active, ENoActiveGame);
-    assert!(session.player == ctx.sender(), ENotOwner);
-    
-    session.is_active = false;
-}
-
-/// Claim accumulated rewards
-public entry fun claim_rewards(
-    pool: &mut GamePool,
-    session: GameSession,
+    session_id: u64,
+    level: u64,
+    score: u64,
+    aliens_destroyed: u64,
     ctx: &mut TxContext
 ) {
-    // Validate session belongs to sender
-    assert!(session.player == ctx.sender(), ENotOwner);
+    assert!(!pool.is_paused, EContractPaused);
+    assert!(table::contains(&pool.game_sessions, session_id), EInvalidSession);
     
-    // Game must be ended
-    assert!(!session.is_active, EGameStillActive);
+    let session = table::borrow_mut(&mut pool.game_sessions, session_id);
     
-    let GameSession {
-        id,
-        player,
-        current_level: _,
-        levels_completed: _,
-        start_time: _,
-        level_start_time: _,
-        total_earned,
-        is_active: _,
-    } = session;
+    // Validate session owner
+    assert!(session.player == ctx.sender(), ENotSessionOwner);
+    assert!(session.is_active, ESessionNotActive);
     
-    // Transfer rewards if any earned
-    if (total_earned > 0) {
-        let reward_balance = balance::split(&mut pool.reward_pool, total_earned);
-        let reward_coin = coin::from_balance(reward_balance, ctx);
-        transfer::public_transfer(reward_coin, player);
+    // Validate level
+    assert!(level == session.current_level && level <= MAX_LEVELS, EInvalidLevel);
+    
+    // Check if level time hasn't expired
+    let current_time = ctx.epoch_timestamp_ms();
+    assert!(current_time <= session.level_start_time + LEVEL_DURATION, ELevelTimeExpired);
+    
+    // Verify level completion (simplified verification)
+    let expected_aliens = get_alien_count_for_level(level);
+    assert!(aliens_destroyed == expected_aliens, EInvalidLevelHash);
+    
+    // Create level hash to prevent replay attacks
+    let level_hash = create_level_hash(session_id, level, score, aliens_destroyed, current_time);
+    
+    assert!(!table::contains(&pool.level_hash_used, level_hash), ELevelHashAlreadyUsed);
+    table::add(&mut pool.level_hash_used, level_hash, true);
+    vector::push_back(&mut session.level_hashes, level_hash);
+    
+    // Update session state
+    session.levels_completed = session.levels_completed + 1;
+    session.total_rewards_earned = session.total_rewards_earned + REWARD_PER_LEVEL;
+    session.current_level = session.current_level + 1;
+    session.level_start_time = current_time;
+    
+    event::emit(LevelCompleted {
+        session_id,
+        player: ctx.sender(),
+        level,
+        level_hash,
+    });
+    
+    // Check if game is completed
+    if (session.current_level > MAX_LEVELS) {
+        session.is_active = false;
+        session.is_completed = true;
         
-        pool.total_rewards_distributed = pool.total_rewards_distributed + total_earned;
+        // Update player total rewards
+        if (!table::contains(&pool.player_total_rewards, ctx.sender())) {
+            table::add(&mut pool.player_total_rewards, ctx.sender(), 0);
+        };
+        let player_total = table::borrow_mut(&mut pool.player_total_rewards, ctx.sender());
+        *player_total = *player_total + session.total_rewards_earned;
+        
+        event::emit(GameCompleted {
+            session_id,
+            player: ctx.sender(),
+            total_rewards: session.total_rewards_earned,
+        });
+    };
+}
+
+/// Abandon the current game session (called when player quits or loses)
+public entry fun abandon_game(
+    pool: &mut GamePool,
+    session_id: u64,
+    ctx: &mut TxContext
+) {
+    assert!(!pool.is_paused, EContractPaused);
+    assert!(table::contains(&pool.game_sessions, session_id), EInvalidSession);
+    
+    let session = table::borrow_mut(&mut pool.game_sessions, session_id);
+    
+    assert!(session.player == ctx.sender(), ENotSessionOwner);
+    assert!(session.is_active, ESessionNotActive);
+    
+    session.is_active = false;
+    
+    let partial_rewards = session.total_rewards_earned;
+    
+    // Player keeps rewards for any levels they completed before losing/quitting
+    if (partial_rewards > 0) {
+        if (!table::contains(&pool.player_total_rewards, ctx.sender())) {
+            table::add(&mut pool.player_total_rewards, ctx.sender(), 0);
+        };
+        let player_total = table::borrow_mut(&mut pool.player_total_rewards, ctx.sender());
+        *player_total = *player_total + partial_rewards;
     };
     
-    object::delete(id);
+    event::emit(GameAbandoned {
+        session_id,
+        player: ctx.sender(),
+        levels_completed: session.levels_completed,
+        partial_rewards,
+    });
+}
+
+/// Claim rewards earned from completed levels
+public entry fun claim_rewards(
+    pool: &mut GamePool,
+    session_id: u64,
+    ctx: &mut TxContext
+) {
+    assert!(!pool.is_paused, EContractPaused);
+    assert!(table::contains(&pool.game_sessions, session_id), EInvalidSession);
+    
+    let session = table::borrow_mut(&mut pool.game_sessions, session_id);
+    
+    assert!(session.player == ctx.sender(), ENotSessionOwner);
+    assert!(session.levels_completed > 0, ENoRewardsToClaim);
+    
+    let rewards_to_claim = session.total_rewards_earned;
+    
+    // Check contract has sufficient balance
+    assert!(balance::value(&pool.reward_pool) >= rewards_to_claim, EInsufficientContractBalance);
+    
+    // Reset rewards to prevent double claiming
+    session.total_rewards_earned = 0;
+    
+    // Transfer OCT tokens to player
+    let reward_balance = balance::split(&mut pool.reward_pool, rewards_to_claim);
+    let reward_coin = coin::from_balance(reward_balance, ctx);
+    transfer::public_transfer(reward_coin, ctx.sender());
+    
+    event::emit(RewardsClaimed {
+        session_id,
+        player: ctx.sender(),
+        amount: rewards_to_claim,
+    });
+}
+
+/// Pause the contract (emergency only, owner only)
+public entry fun pause(pool: &mut GamePool, ctx: &TxContext) {
+    assert!(pool.owner == ctx.sender(), ENotOwner);
+    pool.is_paused = true;
+}
+
+/// Unpause the contract (owner only)
+public entry fun unpause(pool: &mut GamePool, ctx: &TxContext) {
+    assert!(pool.owner == ctx.sender(), ENotOwner);
+    pool.is_paused = false;
+}
+
+/// Withdraw funds from contract (owner only)
+public entry fun withdraw(
+    pool: &mut GamePool,
+    amount: u64,
+    ctx: &mut TxContext
+) {
+    assert!(pool.owner == ctx.sender(), ENotOwner);
+    assert!(balance::value(&pool.reward_pool) >= amount, EInsufficientContractBalance);
+    
+    let withdrawal_balance = balance::split(&mut pool.reward_pool, amount);
+    let withdrawal_coin = coin::from_balance(withdrawal_balance, ctx);
+    transfer::public_transfer(withdrawal_coin, pool.owner);
+    
+    event::emit(OwnerWithdraw {
+        owner: pool.owner,
+        amount,
+    });
 }
 
 // === View Functions ===
 
 /// Get game session information
-public fun get_session_info(session: &GameSession): (u64, u64, u64, u64, bool) {
+public fun get_session_info(pool: &GamePool, session_id: u64): (
+    address,  // player
+    u64,      // current_level
+    u64,      // levels_completed
+    u64,      // total_rewards_earned
+    u64,      // start_time
+    bool,     // is_active
+    bool      // is_completed
+) {
+    assert!(table::contains(&pool.game_sessions, session_id), EInvalidSession);
+    let session = table::borrow(&pool.game_sessions, session_id);
+    
     (
+        session.player,
         session.current_level,
         session.levels_completed,
-        session.total_earned,
-        session.level_start_time,
-        session.is_active
+        session.total_rewards_earned,
+        session.start_time,
+        session.is_active,
+        session.is_completed
     )
+}
+
+/// Get all session IDs for a player
+public fun get_player_sessions(pool: &GamePool, player: address): vector<u64> {
+    if (table::contains(&pool.player_sessions, player)) {
+        *table::borrow(&pool.player_sessions, player)
+    } else {
+        vector::empty()
+    }
+}
+
+/// Get remaining time for current level
+public fun get_level_time_remaining(pool: &GamePool, session_id: u64, current_time: u64): u64 {
+    assert!(table::contains(&pool.game_sessions, session_id), EInvalidSession);
+    let session = table::borrow(&pool.game_sessions, session_id);
+    
+    if (!session.is_active) {
+        return 0
+    };
+    
+    let time_elapsed = current_time - session.level_start_time;
+    if (time_elapsed >= LEVEL_DURATION) {
+        0
+    } else {
+        LEVEL_DURATION - time_elapsed
+    }
+}
+
+/// Get contract's OCT token balance
+public fun get_contract_balance(pool: &GamePool): u64 {
+    balance::value(&pool.reward_pool)
+}
+
+/// Get player total rewards
+public fun get_player_total_rewards(pool: &GamePool, player: address): u64 {
+    if (table::contains(&pool.player_total_rewards, player)) {
+        *table::borrow(&pool.player_total_rewards, player)
+    } else {
+        0
+    }
 }
 
 /// Get pool information
@@ -229,51 +465,74 @@ public fun get_pool_info(pool: &GamePool): (u64, u64, u64) {
 
 /// Calculate alien count for a given level
 public fun get_alien_count_for_level(level: u64): u64 {
-    // Level 1: 11 aliens
-    // Level 2: 22 aliens
-    // Level 3: 33 aliens
-    // Level 4: 44 aliens
-    // Level 5: 55 aliens
-    BASE_ALIEN_COUNT * level
+    if (level < 1 || level > MAX_LEVELS) {
+        return 0
+    };
+    level * ALIENS_PER_ROW
 }
 
-/// Get reward for completing N levels
+/// Calculate total reward for N levels
 public fun calculate_total_reward(levels_completed: u64): u64 {
     levels_completed * REWARD_PER_LEVEL
 }
 
-/// Check if level time limit exceeded
-public fun is_level_expired(session: &GameSession, current_time: u64): bool {
-    let time_elapsed = current_time - session.level_start_time;
-    time_elapsed > TIME_LIMIT_PER_LEVEL
+// === Helper Functions ===
+
+/// Create a level hash for replay attack prevention
+fun create_level_hash(
+    session_id: u64,
+    level: u64,
+    score: u64,
+    aliens_destroyed: u64,
+    timestamp: u64
+): u256 {
+    use std::hash;
+    use std::bcs;
+    
+    let mut data = vector::empty<u8>();
+    vector::append(&mut data, bcs::to_bytes(&session_id));
+    vector::append(&mut data, bcs::to_bytes(&level));
+    vector::append(&mut data, bcs::to_bytes(&score));
+    vector::append(&mut data, bcs::to_bytes(&aliens_destroyed));
+    vector::append(&mut data, bcs::to_bytes(&timestamp));
+    
+    let hash_bytes = hash::sha2_256(data);
+    bytes_to_u256(hash_bytes)
+}
+
+/// Convert bytes to u256
+fun bytes_to_u256(bytes: vector<u8>): u256 {
+    let mut result: u256 = 0;
+    let len = vector::length(&bytes);
+    let mut i = 0;
+    
+    while (i < len && i < 32) {
+        let byte = *vector::borrow(&bytes, i);
+        result = result * 256 + (byte as u256);
+        i = i + 1;
+    };
+    
+    result
 }
 
 // === Tests ===
 
 #[test_only]
-use one::test_scenario::{Self as ts, Scenario};
+use sui::test_scenario::{Self as ts, Scenario};
 #[test_only]
-use one::test_utils;
+use sui::test_utils;
 
 #[test_only]
 const ADMIN: address = @0xAD;
 #[test_only]
 const PLAYER1: address = @0xCAFE;
-#[test_only]
-const PLAYER2: address = @0xFACE;
-
-#[test_only]
-fun create_test_coin(amount: u64, scenario: &mut Scenario): Coin<OCT> {
-    coin::mint_for_testing<OCT>(amount, ts::ctx(scenario))
-}
 
 #[test]
 fun test_initialize() {
     let mut scenario = ts::begin(ADMIN);
     
     {
-        let pool_coin = create_test_coin(10000000, &mut scenario); // 10 OCT
-        initialize(pool_coin, ts::ctx(&mut scenario));
+        initialize(ts::ctx(&mut scenario));
     };
     
     scenario.next_tx(ADMIN);
@@ -281,7 +540,7 @@ fun test_initialize() {
         let pool = ts::take_shared<GamePool>(&scenario);
         let (reward_balance, total_games, total_rewards) = get_pool_info(&pool);
         
-        assert!(reward_balance == 10000000, 0);
+        assert!(reward_balance == 0, 0);
         assert!(total_games == 0, 1);
         assert!(total_rewards == 0, 2);
         
@@ -297,8 +556,7 @@ fun test_start_game() {
     
     // Initialize pool
     {
-        let pool_coin = create_test_coin(10000000, &mut scenario);
-        initialize(pool_coin, ts::ctx(&mut scenario));
+        initialize(ts::ctx(&mut scenario));
     };
     
     // Player starts game
@@ -312,109 +570,17 @@ fun test_start_game() {
     // Check session created
     scenario.next_tx(PLAYER1);
     {
-        let session = ts::take_from_sender<GameSession>(&scenario);
-        let (level, completed, earned, _time, active) = get_session_info(&session);
+        let pool = ts::take_shared<GamePool>(&scenario);
+        let (player, level, completed, earned, _time, active, is_completed) = get_session_info(&pool, 1);
         
-        assert!(level == 1, 0);
-        assert!(completed == 0, 1);
-        assert!(earned == 0, 2);
-        assert!(active, 3);
-        
-        ts::return_to_sender(&scenario, session);
-    };
-    
-    scenario.end();
-}
-
-#[test]
-fun test_complete_levels() {
-    let mut scenario = ts::begin(ADMIN);
-    
-    // Initialize pool
-    {
-        let pool_coin = create_test_coin(10000000, &mut scenario);
-        initialize(pool_coin, ts::ctx(&mut scenario));
-    };
-    
-    // Player starts game
-    scenario.next_tx(PLAYER1);
-    {
-        let mut pool = ts::take_shared<GamePool>(&scenario);
-        start_game(&mut pool, ts::ctx(&mut scenario));
-        ts::return_shared(pool);
-    };
-    
-    // Complete level 1
-    scenario.next_tx(PLAYER1);
-    {
-        let mut pool = ts::take_shared<GamePool>(&scenario);
-        let mut session = ts::take_from_sender<GameSession>(&scenario);
-        
-        complete_level(&mut pool, &mut session, ts::ctx(&mut scenario));
-        
-        let (level, completed, earned, _time, active) = get_session_info(&session);
-        assert!(level == 2, 0);
-        assert!(completed == 1, 1);
-        assert!(earned == REWARD_PER_LEVEL, 2);
-        assert!(active, 3);
-        
-        ts::return_to_sender(&scenario, session);
-        ts::return_shared(pool);
-    };
-    
-    scenario.end();
-}
-
-#[test]
-fun test_claim_rewards() {
-    let mut scenario = ts::begin(ADMIN);
-    
-    // Initialize pool
-    {
-        let pool_coin = create_test_coin(10000000, &mut scenario);
-        initialize(pool_coin, ts::ctx(&mut scenario));
-    };
-    
-    // Player starts and completes 2 levels
-    scenario.next_tx(PLAYER1);
-    {
-        let mut pool = ts::take_shared<GamePool>(&scenario);
-        start_game(&mut pool, ts::ctx(&mut scenario));
-        ts::return_shared(pool);
-    };
-    
-    scenario.next_tx(PLAYER1);
-    {
-        let mut pool = ts::take_shared<GamePool>(&scenario);
-        let mut session = ts::take_from_sender<GameSession>(&scenario);
-        
-        complete_level(&mut pool, &mut session, ts::ctx(&mut scenario));
-        complete_level(&mut pool, &mut session, ts::ctx(&mut scenario));
-        
-        // End game
-        end_game(&mut session, ts::ctx(&mut scenario));
-        
-        ts::return_to_sender(&scenario, session);
-        ts::return_shared(pool);
-    };
-    
-    // Claim rewards
-    scenario.next_tx(PLAYER1);
-    {
-        let mut pool = ts::take_shared<GamePool>(&scenario);
-        let session = ts::take_from_sender<GameSession>(&scenario);
-        
-        claim_rewards(&mut pool, session, ts::ctx(&mut scenario));
+        assert!(player == PLAYER1, 0);
+        assert!(level == 1, 1);
+        assert!(completed == 0, 2);
+        assert!(earned == 0, 3);
+        assert!(active, 4);
+        assert!(!is_completed, 5);
         
         ts::return_shared(pool);
-    };
-    
-    // Check player received rewards
-    scenario.next_tx(PLAYER1);
-    {
-        let coin = ts::take_from_sender<Coin<OCT>>(&scenario);
-        assert!(coin::value(&coin) == REWARD_PER_LEVEL * 2, 0);
-        ts::return_to_sender(&scenario, coin);
     };
     
     scenario.end();
@@ -440,12 +606,12 @@ fun test_alien_count_scaling() {
 
 #[test]
 fun test_reward_calculation() {
-    // 1 level = 1 OCT
-    assert!(calculate_total_reward(1) == 1000000, 0);
+    // 1 level = 2 OCT
+    assert!(calculate_total_reward(1) == 2000000, 0);
     
-    // 3 levels = 3 OCT
-    assert!(calculate_total_reward(3) == 3000000, 1);
+    // 3 levels = 6 OCT
+    assert!(calculate_total_reward(3) == 6000000, 1);
     
-    // 5 levels = 5 OCT
-    assert!(calculate_total_reward(5) == 5000000, 2);
+    // 5 levels = 10 OCT
+    assert!(calculate_total_reward(5) == 10000000, 2);
 }

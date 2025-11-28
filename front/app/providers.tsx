@@ -8,9 +8,11 @@ import { useState, type ReactNode } from 'react'
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient())
 
-  // Configure networks - OneChain uses Sui infrastructure
+  // Configure networks - OneChain testnet
   const networks = {
-    testnet: { url: getFullnodeUrl('testnet') },
+    testnet: { 
+      url: process.env.NEXT_PUBLIC_ONECHAIN_RPC || getFullnodeUrl('testnet') 
+    },
     mainnet: { url: getFullnodeUrl('mainnet') },
   }
 

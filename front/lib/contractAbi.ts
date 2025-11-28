@@ -3,6 +3,7 @@
  */
 export const CONTRACT_CONFIG = {
   packageId: process.env.NEXT_PUBLIC_PACKAGE_ID || '0x0',
+  gamePoolId: process.env.NEXT_PUBLIC_GAMEPOOL_ID || '0x0',
   module: 'AlienInvaders',
   network: process.env.NEXT_PUBLIC_NETWORK || 'testnet',
 };
@@ -12,24 +13,23 @@ export const CONTRACT_CONFIG = {
  */
 export const CONTRACT_FUNCTIONS = {
   // Entry functions
-  INITIALIZE: 'initialize',
-  ADD_TO_POOL: 'add_to_pool',
   START_GAME: 'start_game',
   COMPLETE_LEVEL: 'complete_level',
-  END_GAME: 'end_game',
+  ABANDON_GAME: 'abandon_game',
   CLAIM_REWARDS: 'claim_rewards',
   
   // View functions
   GET_SESSION_INFO: 'get_session_info',
+  GET_PLAYER_SESSIONS: 'get_player_sessions',
   GET_POOL_INFO: 'get_pool_info',
   GET_ALIEN_COUNT_FOR_LEVEL: 'get_alien_count_for_level',
   CALCULATE_TOTAL_REWARD: 'calculate_total_reward',
 };
 
 /**
- * Reward per level (1 OCT with 6 decimals)
+ * Reward per level (2 OCT with 6 decimals)
  */
-export const REWARD_PER_LEVEL = 1000000;
+export const REWARD_PER_LEVEL = 2000000;
 
 /**
  * Maximum levels
@@ -47,11 +47,13 @@ export function buildTarget(functionName: string): string {
  * Game session info interface
  */
 export interface GameSessionInfo {
+  player: string;
   currentLevel: number;
   levelsCompleted: number;
-  totalEarned: number;
-  levelStartTime: number;
+  totalRewardsEarned: number;
+  startTime: number;
   isActive: boolean;
+  isCompleted: boolean;
 }
 
 /**
@@ -65,16 +67,20 @@ export interface PoolInfo {
 
 /**
  * Parse session info from contract response
+ * Contract returns: (address, u64, u64, u64, u64, bool, bool)
+ * (player, current_level, levels_completed, total_rewards_earned, start_time, is_active, is_completed)
  */
 export function parseSessionInfo(data: any[]): GameSessionInfo | null {
-  if (!data || data.length < 5) return null;
+  if (!data || data.length < 7) return null;
   
   return {
-    currentLevel: Number(data[0]),
-    levelsCompleted: Number(data[1]),
-    totalEarned: Number(data[2]),
-    levelStartTime: Number(data[3]),
-    isActive: Boolean(data[4]),
+    player: String(data[0]),
+    currentLevel: Number(data[1]),
+    levelsCompleted: Number(data[2]),
+    totalRewardsEarned: Number(data[3]),
+    startTime: Number(data[4]),
+    isActive: Boolean(data[5]),
+    isCompleted: Boolean(data[6]),
   };
 }
 

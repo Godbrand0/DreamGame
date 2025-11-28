@@ -32,6 +32,7 @@ export class Game {
   private levelTimeLimit = 60; // 60 seconds per level
   private timeRemaining = 60;
   private timerInterval: NodeJS.Timeout | null = null;
+  private score = 0;
 
   constructor(canvas: HTMLCanvasElement, callbacks: GameCallbacks, startLevel: number = 1) {
     this.canvas = canvas;
@@ -246,6 +247,7 @@ export class Game {
         if (this.checkCollision(bullet, alien)) {
           this.bullets.splice(bulletIndex, 1);
           this.aliens.splice(alienIndex, 1);
+          this.score += 10; // Add points for each alien destroyed
         }
       });
 
@@ -338,5 +340,9 @@ export class Game {
 
   public getCurrentLevel(): number {
     return this.currentLevel;
+  }
+
+  public getScore(): number {
+    return this.score;
   }
 }
