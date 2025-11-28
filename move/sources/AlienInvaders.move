@@ -41,8 +41,7 @@ const EContractPaused: u64 = 12;
 // === Constants ===
 
 /// Reward per level (2 OCT = 2,000,000 in smallest unit, assuming 6 decimals)
-const REWARD_PER_LEVEL: u64 = 2000000;
-
+const REWARD_PER_LEVEL: u64 = 2000000000; // 2 OCT (9 decimals: 2 * 10^9)
 /// Maximum levels in game
 const MAX_LEVELS: u64 = 5;
 

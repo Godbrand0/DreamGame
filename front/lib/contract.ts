@@ -52,7 +52,10 @@ export function buildCompleteLevelTx(
  */
 export function buildClaimRewardsTx(sessionId: string | number): Transaction {
   const tx = new Transaction();
-  
+
+  // Set explicit gas budget to help with gas estimation issues
+  tx.setGasBudget(10000000); // 0.01 SUI
+
   tx.moveCall({
     target: buildTarget(CONTRACT_FUNCTIONS.CLAIM_REWARDS),
     arguments: [
@@ -60,7 +63,7 @@ export function buildClaimRewardsTx(sessionId: string | number): Transaction {
       tx.pure.u64(sessionId),
     ],
   });
-  
+
   return tx;
 }
 
@@ -232,6 +235,9 @@ export function formatContractError(error: any): string {
   if (errorStr.includes('EInvalidLevelHash')) {
     return 'Invalid alien count for this level';
   }
-  
+  if (errorStr.includes('8') || errorStr.includes('EInsufficientContractBalance')) {
+    return '⚠️ Contract has insufficient balance. The reward pool needs to be funded by the contract owner. Please contact support.';
+  }
+
   return errorStr;
 }

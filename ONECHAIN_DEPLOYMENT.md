@@ -1,11 +1,12 @@
 # OneChain Deployment - Quick Reference
 
-## 🚀 Deployed Contract
+## 🚀 Deployed## Contract Addresses
 
-**Package ID**: `0x97f4a5f123a5e5e202a85c85bca059b54dc33e58044626a2ccb63910ef81bb46`  
-**GamePool ID**: `0xb8405d81d3e4653d1f6d10e2fc6d123cafc1caa0a9ee2f4e48ee085fee6fef9c`  
-**Network**: OneChain Testnet  
-**Deployer**: `0xbe4b02b2b2836c1810c96d01441e161ed0ac445c89204fa9ca1f2fc84603a313`
+- **Package ID:** `0x507b64f3517b3a46cb1f110af6219229c1cdc7dca52cd0b12e15d6fdcad45da0`
+- **GamePool ID:** `0x327d185890ea2571c5ffa7702032c7d6b9bfd8962e467197563c3f530f9fa20b`
+- **Network:** OneChain Testnet
+- **RPC URL:** `https://rpc-testnet.onelabs.cc:443`
+- **Deployer Address:** `0xbe4b02b2b2836c1810c96d01441e161ed0ac445c89204fa9ca1f2fc84603a313`
 
 ---
 

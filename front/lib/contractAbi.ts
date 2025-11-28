@@ -27,9 +27,9 @@ export const CONTRACT_FUNCTIONS = {
 };
 
 /**
- * Reward per level (2 OCT with 6 decimals)
+ * Reward per level (2 OCT with 9 decimals)
  */
-export const REWARD_PER_LEVEL = 2000000;
+export const REWARD_PER_LEVEL = 2000000000;
 
 /**
  * Maximum levels

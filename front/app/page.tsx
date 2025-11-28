@@ -201,10 +201,6 @@ export default function GamePage() {
       console.log('📝 Calling signAndExecuteTransaction...')
       const result = await signAndExecuteTransaction({
         transaction: tx,
-        options: {
-          showEvents: true,
-          showEffects: true,
-        },
       })
 
       console.log('✅ Transaction executed successfully!')
