@@ -100,10 +100,10 @@ export function parsePoolInfo(data: any[]): PoolInfo | null {
 }
 
 /**
- * Format OCT amount
+ * Format OCT amount (9 decimals)
  */
 export function formatOCT(amount: number): string {
-  return (amount / 1000000).toFixed(2);
+  return (amount / 1000000000).toFixed(2);
 }
 
 /**
