@@ -1,18 +1,19 @@
 # 🎮 Alien Invaders GameFi - OneChain Play-to-Earn Platform
 
-A decentralized play-to-earn Space Invaders game built on OneChain where players stake OCT tokens to play and earn rewards based on their performance.
+A decentralized play-to-earn Space Invaders game built on OneChain where players earn OCT tokens based on their performance.
 
 [![Live Demo](https://img.shields.io/badge/demo-online-green.svg)](https://dream-game-nine.vercel.app/)
 
 
 ## 📋 Overview
 
-**Alien Invaders GameFi** combines classic arcade gameplay with blockchain economics. Players stake OCT tokens to enter games, compete for high scores, and earn rewards from a shared prize pool. The better you play, the more you earn!
+**Alien Invaders GameFi** combines classic arcade gameplay with blockchain economics. Players enter games for free, compete for high scores, and earn rewards from a shared prize pool. The better you play, the more you earn!
 
 ### Key Features
 
 - 🎮 **Classic Space Invaders Gameplay**: Nostalgic arcade action with 5 increasingly difficult levels.
 - 💰 **Play-to-Earn**: Earn OCT tokens for every level completed.
+- 🆓 **Free-to-Play**: No staking or entry fees required. Just connect and play.
 - 🔒 **Secure Smart Contracts**: Game logic and rewards are managed by a Move smart contract on OneChain.
 - ⚡ **Instant Rewards**: Claim your earnings immediately after the game.
 - 🌐 **Web3 Integration**: Seamless wallet connection using OneWallet.
@@ -59,7 +60,7 @@ The smart contract is deployed on the **OneChain Testnet**.
 
 ```bash
 git clone https://github.com/Godbrand0/DreamGame.git
-cd alien-invaders-gamefi
+cd DreamGame
 ```
 
 ### 2. Install Dependencies
