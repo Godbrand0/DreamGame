@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Game } from '@/lib/game/Game'
 import { Gamepad2, Trophy, Clock, Coins } from 'lucide-react'
-import { formatOCT, MAX_LEVELS, REWARD_PER_LEVEL } from '@/lib/contractAbi'
+import { formatOCT, MAX_LEVELS, REWARD_PER_LEVEL, CONTRACT_CONFIG } from '@/lib/contractAbi'
 import WalletConnect from '@/components/WalletConnect'
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit'
 import { 
@@ -30,6 +30,16 @@ export default function GamePage() {
   const currentAccount = useCurrentAccount()
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction()
   const suiClient = useSuiClient()
+  
+  // Log configuration and wallet info
+  console.log('Contract config:', {
+    packageId: process.env.NEXT_PUBLIC_PACKAGE_ID,
+    gamePoolId: process.env.NEXT_PUBLIC_GAMEPOOL_ID,
+    network: process.env.NEXT_PUBLIC_NETWORK,
+    rpc: process.env.NEXT_PUBLIC_ONECHAIN_RPC
+  })
+  console.log('Current account:', currentAccount)
+  console.log('Sui client:', suiClient)
 
   useEffect(() => {
     return () => {
@@ -49,10 +59,12 @@ export default function GamePage() {
     try {
       setIsProcessing(true)
       setErrorMessage(null)
-      
+
       // Build and execute start_game transaction
       const tx = buildStartGameTx()
-      
+
+      console.log('Starting game transaction...')
+
       const result = await signAndExecuteTransaction({
         transaction: tx,
       })
@@ -60,7 +72,7 @@ export default function GamePage() {
       console.log('Start game result:', result)
       
       // Extract session ID from transaction events
-      const newSessionId = await extractSessionIdFromTransaction(suiClient, result.digest)
+      const newSessionId = await extractSessionIdFromTransaction(suiClient as any, result.digest)
       
       if (!newSessionId) {
         throw new Error('Failed to extract session ID from transaction')
@@ -127,7 +139,7 @@ export default function GamePage() {
       
       // Build and execute complete_level transaction
       const tx = buildCompleteLevelTx(sessionId, completedLevel, score, aliensDestroyed)
-      
+
       const result = await signAndExecuteTransaction({
         transaction: tx,
       })
@@ -148,24 +160,56 @@ export default function GamePage() {
   }
 
   const claimRewards = async () => {
+    console.log('🎮 claimRewards function called!')
+    console.log('sessionId:', sessionId)
+    console.log('currentAccount:', currentAccount)
+
     if (!sessionId) {
+      console.error('❌ No session ID found')
       setErrorMessage('No active session found')
       return
     }
 
+    if (!currentAccount) {
+      console.error('❌ No current account found')
+      setErrorMessage('Wallet disconnected. Please reconnect your wallet.')
+      return
+    }
+
+    console.log('✅ Validation passed, starting claim process...')
+
     try {
       setIsProcessing(true)
       setErrorMessage(null)
-      
+
+      console.log('📋 Claiming rewards for session:', sessionId)
+      console.log('📋 Session ID type:', typeof sessionId)
+      console.log('📋 Total earned:', totalEarned, 'OCT')
+      console.log('📋 Levels completed:', levelsCompleted)
+      console.log('📋 Current account:', currentAccount.address)
+
+      // Add a small delay to allow wallet to stabilize after game over
+      console.log('⏳ Waiting 500ms...')
+      await new Promise(resolve => setTimeout(resolve, 500))
+      console.log('✅ Wait complete')
+
       // Build and execute claim_rewards transaction
+      console.log('🔨 Building claim transaction...')
       const tx = buildClaimRewardsTx(sessionId)
-      
+      console.log('✅ Claim transaction built:', tx)
+
+      console.log('📝 Calling signAndExecuteTransaction...')
       const result = await signAndExecuteTransaction({
         transaction: tx,
+        options: {
+          showEvents: true,
+          showEffects: true,
+        },
       })
-      
-      console.log('Claim rewards result:', result)
-      console.log(`Successfully claimed ${formatOCT(totalEarned)} OCT!`)
+
+      console.log('✅ Transaction executed successfully!')
+      console.log('📊 Claim rewards result:', result)
+      console.log(`🎉 Successfully claimed ${formatOCT(totalEarned)} OCT!`)
       
       // Reset game state
       setGameState('menu')
@@ -180,9 +224,24 @@ export default function GamePage() {
         gameRef.current = null
       }
     } catch (error: any) {
-      console.error('Error claiming rewards:', error)
-      setErrorMessage(formatContractError(error))
+      console.error('❌ ERROR claiming rewards:', error)
+      console.error('❌ Error type:', typeof error)
+      console.error('❌ Error name:', error?.name)
+      console.error('❌ Error message:', error?.message)
+      console.error('❌ Error cause:', error?.cause)
+      console.error('❌ Error stack:', error?.stack)
+      console.error('❌ Full error object:', JSON.stringify(error, null, 2))
+
+      // Check if it's a network/RPC error
+      if (error?.message?.includes('endpoints') || error?.message?.includes('network')) {
+        setErrorMessage('Network error. Please refresh the page and try again, or check your wallet connection.')
+      } else if (error?.message?.includes('User rejected')) {
+        setErrorMessage('Transaction cancelled by user.')
+      } else {
+        setErrorMessage(formatContractError(error))
+      }
     } finally {
+      console.log('🏁 Finally block - setting isProcessing to false')
       setIsProcessing(false)
     }
   }
@@ -200,36 +259,36 @@ export default function GamePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
-      <div className="max-w-6xl w-full">
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #1e293b, #581c87, #1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div style={{ maxWidth: '72rem', width: '100%' }}>
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="text-center flex-1">
-            <h1 className="text-5xl font-bold text-white mb-4 flex items-center justify-center gap-3">
-              <Gamepad2 className="w-12 h-12 text-purple-400" />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px', position: 'relative' }}>
+          <div style={{ textAlign: 'center', flex: 1 }}>
+            <h1 style={{ fontSize: '3rem', fontWeight: 'bold', color: 'white', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+              <Gamepad2 style={{ width: '48px', height: '48px', color: '#c084fc' }} />
               Alien Invaders GameFi
             </h1>
-            <p className="text-xl text-gray-300">
+            <p style={{ fontSize: '1.25rem', color: '#d1d5db' }}>
               Play through 5 levels • Earn 2 OCT per level • 60 seconds each
             </p>
           </div>
-          <div className="absolute top-4 right-4">
+          <div style={{ position: 'absolute', top: '16px', right: '16px' }}>
             <WalletConnect />
           </div>
         </div>
 
         {/* Error Message */}
         {errorMessage && (
-          <div className="mb-6 bg-red-900/50 border-2 border-red-500 rounded-lg p-4">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">⚠️</span>
+          <div style={{ marginBottom: '24px', backgroundColor: 'rgba(127, 29, 29, 0.5)', border: '2px solid #ef4444', borderRadius: '8px', padding: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '24px' }}>⚠️</span>
               <div>
-                <p className="text-red-200 font-semibold">Error</p>
-                <p className="text-red-100">{errorMessage}</p>
+                <p style={{ color: '#fca5a5', fontWeight: '600' }}>Error</p>
+                <p style={{ color: '#fecaca' }}>{errorMessage}</p>
               </div>
               <button
                 onClick={() => setErrorMessage(null)}
-                className="ml-auto text-red-200 hover:text-white"
+                style={{ marginLeft: 'auto', color: '#fca5a5', cursor: 'pointer' }}
               >
                 ✕
               </button>
@@ -239,43 +298,43 @@ export default function GamePage() {
 
         {/* Processing Indicator */}
         {isProcessing && (
-          <div className="mb-6 bg-purple-900/50 border-2 border-purple-500 rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-400"></div>
-              <p className="text-purple-200">Processing transaction... Please sign in your wallet</p>
+          <div style={{ marginBottom: '24px', backgroundColor: 'rgba(147, 51, 234, 0.5)', border: '2px solid #a855f7', borderRadius: '8px', padding: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ animation: 'spin 1s linear infinite', borderRadius: '50%', height: '24px', width: '24px', borderBottom: '2px solid #c084fc' }}></div>
+              <p style={{ color: '#e9d5ff' }}>Processing transaction... Please sign in your wallet</p>
             </div>
           </div>
         )}
 
         {/* Game Stats */}
         {hasActiveSession && (
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-gray-400 mb-1">
-                <Trophy className="w-4 h-4" />
-                <span className="text-sm">Level</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+            <div style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', backdropFilter: 'blur(8px)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', padding: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', marginBottom: '4px' }}>
+                <Trophy style={{ width: '16px', height: '16px' }} />
+                <span style={{ fontSize: '14px' }}>Level</span>
               </div>
-              <div className="text-2xl font-bold text-white">
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'white' }}>
                 {currentLevel} / {MAX_LEVELS}
               </div>
             </div>
 
-            <div className="bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-gray-400 mb-1">
-                <Clock className="w-4 h-4" />
-                <span className="text-sm">Time Left</span>
+            <div style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', backdropFilter: 'blur(8px)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', padding: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', marginBottom: '4px' }}>
+                <Clock style={{ width: '16px', height: '16px' }} />
+                <span style={{ fontSize: '14px' }}>Time Left</span>
               </div>
-              <div className={`text-2xl font-bold ${timeRemaining <= 10 ? 'text-red-400' : 'text-white'}`}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: timeRemaining <= 10 ? '#f87171' : 'white' }}>
                 {timeRemaining}s
               </div>
             </div>
 
-            <div className="bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-gray-400 mb-1">
-                <Coins className="w-4 h-4" />
-                <span className="text-sm">Earned</span>
+            <div style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', backdropFilter: 'blur(8px)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', padding: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', marginBottom: '4px' }}>
+                <Coins style={{ width: '16px', height: '16px' }} />
+                <span style={{ fontSize: '14px' }}>Earned</span>
               </div>
-              <div className="text-2xl font-bold text-green-400">
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#4ade80' }}>
                 {formatOCT(totalEarned)} OCT
               </div>
             </div>
@@ -283,27 +342,30 @@ export default function GamePage() {
         )}
 
         {/* Game Canvas Container */}
-        <div className="relative bg-black rounded-lg overflow-hidden shadow-2xl border-4 border-purple-500/50">
+        <div style={{ position: 'relative', backgroundColor: 'black', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '4px solid rgba(168, 85, 247, 0.5)' }}>
           <canvas
             ref={canvasRef}
             width={800}
             height={600}
             className="w-full"
+            style={{ zIndex: 1 }}
           />
 
           {/* Menu Overlay */}
           {gameState === 'menu' && (
-            <div className="absolute inset-0 bg-black/90 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-index-10" style={{ zIndex: 10 }}>
+              {(() => { console.log('Menu overlay rendering'); return null; })()}
               <div className="text-center p-8">
                 <h2 className="text-4xl font-bold text-white mb-6">Ready to Play?</h2>
                 <p className="text-gray-300 mb-8 max-w-md">
-                  Destroy all aliens in each level within 60 seconds. 
+                  Destroy all aliens in each level within 60 seconds.
                   Complete all 5 levels to earn 5 OCT!
                 </p>
                 <button
                   onClick={startGame}
                   disabled={isProcessing}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-4 border-white shadow-2xl"
+                  style={{ zIndex: 20 }}
                 >
                   {isProcessing ? 'Starting...' : 'Start Game'}
                 </button>
@@ -388,9 +450,10 @@ export default function GamePage() {
                     </div>
                     <button
                       onClick={claimRewards}
-                      className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 shadow-lg w-full"
+                      disabled={isProcessing}
+                      className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 shadow-lg w-full disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                     >
-                      Claim Rewards
+                      {isProcessing ? 'Claiming...' : 'Claim Rewards'}
                     </button>
                     <p className="text-sm text-gray-400 mt-4">
                       (Requires wallet signature)
@@ -420,7 +483,7 @@ export default function GamePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-300">
             <div>
               <h4 className="font-semibold text-purple-400 mb-2">Objective</h4>
-              <ul className="space-y-1 text-sm">
+              <ul className="space-y-1 text-sm text-green-300">
                 <li>• Destroy all aliens before time runs out</li>
                 <li>• Complete 5 levels to earn maximum rewards</li>
                 <li>• Each level adds more aliens (11, 22, 33, 44, 55)</li>

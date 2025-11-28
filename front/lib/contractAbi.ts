@@ -39,8 +39,10 @@ export const MAX_LEVELS = 5;
 /**
  * Build transaction target
  */
-export function buildTarget(functionName: string): string {
-  return `${CONTRACT_CONFIG.packageId}::${CONTRACT_CONFIG.module}::${functionName}`;
+export function buildTarget(functionName: string): `${string}::${string}::${string}` {
+  const target = `${CONTRACT_CONFIG.packageId}::${CONTRACT_CONFIG.module}::${functionName}`;
+  console.log('Built target:', target);
+  return target as `${string}::${string}::${string}`;
 }
 
 /**

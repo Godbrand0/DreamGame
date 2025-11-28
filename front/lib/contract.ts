@@ -2,23 +2,23 @@
  * Contract interaction utilities for AlienInvaders GameFi
  */
 
-import { TransactionBlock } from '@mysten/sui.js/transactions';
-import { SuiClient } from '@mysten/sui.js/client';
+import { Transaction } from '@mysten/sui/transactions';
+import { SuiClient } from '@mysten/sui/client';
 import { CONTRACT_CONFIG, CONTRACT_FUNCTIONS, buildTarget } from './contractAbi';
 
 /**
  * Build transaction to start a new game session
  */
-export function buildStartGameTx(): TransactionBlock {
-  const tx = new TransactionBlock();
-  
+export function buildStartGameTx(): Transaction {
+  const tx = new Transaction();
+
   tx.moveCall({
     target: buildTarget(CONTRACT_FUNCTIONS.START_GAME),
     arguments: [
       tx.object(CONTRACT_CONFIG.gamePoolId),
     ],
   });
-  
+
   return tx;
 }
 
@@ -30,8 +30,8 @@ export function buildCompleteLevelTx(
   level: number,
   score: number,
   aliensDestroyed: number
-): TransactionBlock {
-  const tx = new TransactionBlock();
+): Transaction {
+  const tx = new Transaction();
   
   tx.moveCall({
     target: buildTarget(CONTRACT_FUNCTIONS.COMPLETE_LEVEL),
@@ -50,8 +50,8 @@ export function buildCompleteLevelTx(
 /**
  * Build transaction to claim rewards
  */
-export function buildClaimRewardsTx(sessionId: string | number): TransactionBlock {
-  const tx = new TransactionBlock();
+export function buildClaimRewardsTx(sessionId: string | number): Transaction {
+  const tx = new Transaction();
   
   tx.moveCall({
     target: buildTarget(CONTRACT_FUNCTIONS.CLAIM_REWARDS),
@@ -67,8 +67,8 @@ export function buildClaimRewardsTx(sessionId: string | number): TransactionBloc
 /**
  * Build transaction to abandon game
  */
-export function buildAbandonGameTx(sessionId: string | number): TransactionBlock {
-  const tx = new TransactionBlock();
+export function buildAbandonGameTx(sessionId: string | number): Transaction {
+  const tx = new Transaction();
   
   tx.moveCall({
     target: buildTarget(CONTRACT_FUNCTIONS.ABANDON_GAME),
@@ -125,7 +125,7 @@ export async function getSessionInfo(
   try {
     const result = await client.devInspectTransactionBlock({
       transactionBlock: (() => {
-        const tx = new TransactionBlock();
+        const tx = new Transaction();
         tx.moveCall({
           target: buildTarget(CONTRACT_FUNCTIONS.GET_SESSION_INFO),
           arguments: [
@@ -155,7 +155,7 @@ export async function getPlayerSessions(
   try {
     const result = await client.devInspectTransactionBlock({
       transactionBlock: (() => {
-        const tx = new TransactionBlock();
+        const tx = new Transaction();
         tx.moveCall({
           target: buildTarget(CONTRACT_FUNCTIONS.GET_PLAYER_SESSIONS),
           arguments: [
